@@ -880,8 +880,29 @@ participantInput.addEventListener('keydown', (e) => {
   }
 });
 
-// 兜底轮询：每 150ms 检查 input 值，不依赖 IME 事件，确保任何输入方式都能识别全角逗号
-// （中文 IME 某些场景下不会触发 input / keyup / compositionend 事件，只能靠轮询）
+// 多事件组合 + 强制 IME 提交，彻底解决中文输入法下全角逗号不触发的问题
+// 单独靠任何一种事件都会被 IME 拦截，必须多管齐下
+
+// 1. beforeinput：IME 提交字符前会触发，e.data 是即将插入的字符
+participantInput.addEventListener('beforeinput', (e) => {
+  if (e.data && /[,,]/.test(e.data)) {
+    e.preventDefault();
+    commitParticipant();
+  }
+});
+
+// 2. keydown：回车提交
+participantInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    commitParticipant();
+  } else if (e.key === 'Backspace' && !participantInput.value && formParticipants.length > 0) {
+    formParticipants.pop();
+    renderChips();
+  }
+});
+
+// 3. 兜底：setInterval 轮询
 let lastPolledValue = participantInput.value;
 setInterval(() => {
   const current = participantInput.value;
@@ -889,25 +910,33 @@ setInterval(() => {
     lastPolledValue = current;
     if (/[,,]/.test(current)) commitParticipant();
   }
-}, 150);
+}, 200);
 
 function commitParticipant() {
-  const val = participantInput.value.trim();
-  if (!val) {
-    participantInput.value = '';
-    return;
+  // 强制 IME 结束当前合成状态（blur 会让 IME 提交所有未提交字符）
+  if (document.activeElement === participantInput) {
+    participantInput.blur();
+    participantInput.focus();
   }
-  // 按全角/半角逗号分割，逐个添加
-  const names = val.split(/[,,]/).map(s => s.trim()).filter(Boolean);
-  let changed = false;
-  names.forEach(name => {
-    if (!formParticipants.includes(name)) {
-      formParticipants.push(name);
-      changed = true;
+  // 等待 IME 提交完成后处理
+  setTimeout(() => {
+    const val = participantInput.value.trim();
+    if (!val) {
+      participantInput.value = '';
+      return;
     }
-  });
-  if (changed) renderChips();
-  participantInput.value = '';
+    // 按全角/半角逗号分割，逐个添加
+    const names = val.split(/[,,]/).map(s => s.trim()).filter(Boolean);
+    let changed = false;
+    names.forEach(name => {
+      if (!formParticipants.includes(name)) {
+        formParticipants.push(name);
+        changed = true;
+      }
+    });
+    if (changed) renderChips();
+    participantInput.value = '';
+  }, 30);
 }
 
 chipsContainer.addEventListener('click', (e) => {
