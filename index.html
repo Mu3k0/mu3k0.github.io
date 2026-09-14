@@ -1072,24 +1072,52 @@ document.getElementById('exportCsvBtn').addEventListener('click', () => {
     alert('当前没有账目，无法导出 CSV');
     return;
   }
-  const headers = ['日期', '币种', '金额', '付款方式', '付款人', '参与人', '备注'];
-  const rows = state.entries.map(e => [
-    e.date,
-    e.currency,
-    e.amount.toFixed(2),
-    e.paymentMethod,
-    e.payer,
-    e.participants.join('、'),
-    e.note || ''
-  ]);
-  // CSV 字段转义：含逗号/引号/换行的字段要包双引号，内部引号双写
   const esc = v => {
     const s = String(v == null ? '' : v);
     return /[,"\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
-  // UTF-8 BOM 让 Excel 正确识别中文
+  const fmt = n => Number(n).toFixed(2);
+  const lines = [];
+
+  // 块 1：账目明细（按参与人展开，第一列为参与人）
+  lines.push('账目明细（按参与人展开）');
+  lines.push(['参与人', '日期', '币种', '总金额', '人均', '付款人', '付款方式', '备注'].map(esc).join(','));
+  const sorted = [...state.entries].sort((a, b) =>
+    new Date(b.date) - new Date(a.date) || b.createdAt - a.createdAt
+  );
+  sorted.forEach(e => {
+    const perPerson = fmt(e.amount / e.participants.length);
+    e.participants.forEach(p => {
+      lines.push([
+        p, e.date, e.currency, fmt(e.amount), perPerson,
+        e.payer, e.paymentMethod, e.note || ''
+      ].map(esc).join(','));
+    });
+  });
+
+  // 块 2：平账结算
+  lines.push('');
+  lines.push('平账结算');
+  lines.push(['参与人', '币种', '净额'].map(esc).join(','));
+  const balances = computeBalanceByCurrency();
+  Object.keys(balances).sort().forEach(cur => {
+    Object.keys(balances[cur]).sort().forEach(name => {
+      lines.push([name, cur, fmt(balances[cur][name])].map(esc).join(','));
+    });
+  });
+
+  // 块 3：最少转账方案
+  lines.push('');
+  lines.push('最少转账方案');
+  lines.push(['付款人', '收款人', '币种', '金额'].map(esc).join(','));
+  Object.keys(balances).sort().forEach(cur => {
+    computeTransfers(balances[cur]).forEach(t => {
+      lines.push([t.from, t.to, cur, fmt(t.amount)].map(esc).join(','));
+    });
+  });
+
   const BOM = '\uFEFF';
-  const csv = BOM + [headers, ...rows].map(r => r.map(esc).join(',')).join('\r\n');
+  const csv = BOM + lines.join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
