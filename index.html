@@ -880,11 +880,18 @@ participantInput.addEventListener('keydown', (e) => {
   }
 });
 
-// 输入全角「，」或半角「,」逗号时自动添加（带空格的人名如「金 敏」「Harry Potter」不受影响）
-participantInput.addEventListener('input', () => {
-  if (!/[,,]/.test(participantInput.value)) return;
-  commitParticipant();
-});
+// 多种事件 + 去抖，确保 IME 提交的全角逗号也能稳定触发
+// （单独靠 input 事件在某些中文 IME 下不可靠）
+let participantDebounce;
+function scheduleParticipantCheck() {
+  clearTimeout(participantDebounce);
+  participantDebounce = setTimeout(() => {
+    if (/[,,]/.test(participantInput.value)) commitParticipant();
+  }, 100);
+}
+participantInput.addEventListener('input', scheduleParticipantCheck);
+participantInput.addEventListener('keyup', scheduleParticipantCheck);
+participantInput.addEventListener('compositionend', scheduleParticipantCheck);
 
 function commitParticipant() {
   const val = participantInput.value.trim();
