@@ -870,21 +870,12 @@ const form = document.getElementById('entryForm');
 const participantInput = document.getElementById('participantInput');
 const chipsContainer = document.getElementById('participantsChips');
 
-participantInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    commitParticipant();
-  } else if (e.key === 'Backspace' && !participantInput.value && formParticipants.length > 0) {
-    formParticipants.pop();
-    renderChips();
-  }
-});
-
-// 多事件协同 + 同步处理，彻底解决中文 IME 下全角逗号问题
+// 多事件协同 + Unicode 转义彻底解决全角逗号问题
+const COMMA_RE = /[,\uFF0C]/;
 
 // 1. keydown：物理按键阶段拦截，最早最稳（PC 上中文 IME 按 , 键时 e.key 就是 ','，preventDefault 能阻止 IME 后续处理）
 participantInput.addEventListener('keydown', (e) => {
-  if (e.key === ',' || e.key === '，') {
+  if (e.key === ',' || e.key === '，' || e.key === '\uFF0C') {
     e.preventDefault();
     processNow();
     return;
@@ -902,19 +893,26 @@ participantInput.addEventListener('keydown', (e) => {
 
 // 2. beforeinput：IME 提交字符前补充处理
 participantInput.addEventListener('beforeinput', (e) => {
-  if (e.data && /[,,]/.test(e.data)) {
+  if (e.data && COMMA_RE.test(e.data)) {
     e.preventDefault();
     processNow();
   }
 });
 
-// 3. 兜底：setInterval 轮询
+// 3. input：IME 输入完成后的最终检测（关键：中文输入法输入全角逗号后会触发此事件）
+participantInput.addEventListener('input', () => {
+  if (COMMA_RE.test(participantInput.value)) {
+    processNow();
+  }
+});
+
+// 4. 兜底：setInterval 轮询
 let lastPolledValue = participantInput.value;
 setInterval(() => {
   const current = participantInput.value;
   if (current !== lastPolledValue) {
     lastPolledValue = current;
-    if (/[,,]/.test(current)) processNow();
+    if (COMMA_RE.test(current)) processNow();
   }
 }, 200);
 
@@ -925,7 +923,7 @@ function processNow() {
     participantInput.value = '';
     return;
   }
-  const names = val.split(/[,,]/).map(s => s.trim()).filter(Boolean);
+  const names = val.split(COMMA_RE).map(s => s.trim()).filter(Boolean);
   let changed = false;
   names.forEach(name => {
     if (!formParticipants.includes(name)) {
