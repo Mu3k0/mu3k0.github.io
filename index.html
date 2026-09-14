@@ -422,7 +422,7 @@
           <input type="text" id="payer" placeholder="如：张三" list="peopleList" required>
         </div>
         <div class="form-field full-width">
-          <label>消费参与人 <span class="required">*</span> <small style="color:var(--text-light);">(输入完姓名后按回车或输入半角逗号添加，可输入多人)</small></label>
+          <label>消费参与人 <span class="required">*</span> <small style="color:var(--text-light);">(输入完姓名后按回车或输入逗号添加，全角半角逗号都行，可输入多人)</small></label>
           <div class="chips-container" id="participantsChips">
             <input type="text" id="participantInput" placeholder="输入姓名后回车">
           </div>
@@ -880,33 +880,28 @@ participantInput.addEventListener('keydown', (e) => {
   }
 });
 
+// 输入全角「，」或半角「,」逗号时自动添加（带空格的人名如「金 敏」「Harry Potter」不受影响）
 participantInput.addEventListener('input', () => {
-  const val = participantInput.value;
-  if (!val.includes(',')) return;
+  if (!/[,,]/.test(participantInput.value)) return;
+  commitParticipant();
+});
 
-  const parts = val.split(',').map(s => s.trim()).filter(Boolean);
-  if (parts.length === 0) {
+function commitParticipant() {
+  const val = participantInput.value.trim();
+  if (!val) {
     participantInput.value = '';
     return;
   }
-
+  // 按全角/半角逗号分割，逐个添加
+  const names = val.split(/[,,]/).map(s => s.trim()).filter(Boolean);
   let changed = false;
-  parts.forEach(name => {
+  names.forEach(name => {
     if (!formParticipants.includes(name)) {
       formParticipants.push(name);
       changed = true;
     }
   });
   if (changed) renderChips();
-  participantInput.value = '';
-});
-
-function commitParticipant() {
-  const name = participantInput.value.trim();
-  if (name && !formParticipants.includes(name)) {
-    formParticipants.push(name);
-    renderChips();
-  }
   participantInput.value = '';
 }
 
