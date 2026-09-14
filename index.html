@@ -880,18 +880,16 @@ participantInput.addEventListener('keydown', (e) => {
   }
 });
 
-// 多种事件 + 去抖，确保 IME 提交的全角逗号也能稳定触发
-// （单独靠 input 事件在某些中文 IME 下不可靠）
-let participantDebounce;
-function scheduleParticipantCheck() {
-  clearTimeout(participantDebounce);
-  participantDebounce = setTimeout(() => {
-    if (/[,,]/.test(participantInput.value)) commitParticipant();
-  }, 100);
-}
-participantInput.addEventListener('input', scheduleParticipantCheck);
-participantInput.addEventListener('keyup', scheduleParticipantCheck);
-participantInput.addEventListener('compositionend', scheduleParticipantCheck);
+// 兜底轮询：每 150ms 检查 input 值，不依赖 IME 事件，确保任何输入方式都能识别全角逗号
+// （中文 IME 某些场景下不会触发 input / keyup / compositionend 事件，只能靠轮询）
+let lastPolledValue = participantInput.value;
+setInterval(() => {
+  const current = participantInput.value;
+  if (current !== lastPolledValue) {
+    lastPolledValue = current;
+    if (/[,,]/.test(current)) commitParticipant();
+  }
+}, 150);
 
 function commitParticipant() {
   const val = participantInput.value.trim();
